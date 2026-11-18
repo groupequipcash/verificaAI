@@ -6,6 +6,7 @@ import {
   Check,
   ChevronDown,
   CircleCheck,
+  Download,
   ExternalLink,
   Globe2,
   History,
@@ -268,6 +269,45 @@ export default function Home() {
     setHistory([]);
     setCursor(0);
   }
+  function exportHistory() {
+    const cell = (value: string) =>
+      '"' +
+      (/^[\s]*[=+@-]/.test(value) ? "'" : "") +
+      value.replace(/"/g, '""') +
+      '"';
+    const rows = [
+      [
+        "Nome fantasia",
+        "Razão social",
+        "CNPJ",
+        "Cidade",
+        "Estado",
+        "Site",
+        "WhatsApp",
+        "Data",
+      ],
+      ...uniqueHistory.map((c) => [
+        c.name,
+        c.legalName,
+        c.cnpj,
+        c.city,
+        c.state,
+        c.site,
+        c.whatsappUrl,
+        c.foundAt,
+      ]),
+    ];
+    const csv =
+      "\uFEFF" + rows.map((row) => row.map(cell).join(";")).join("\r\n");
+    const url = URL.createObjectURL(
+      new Blob([csv], { type: "text/csv;charset=utf-8" }),
+    );
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "verifica-ai-historico.csv";
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
   return (
     <main className="grid-bg min-h-screen">
       <div className="mx-auto max-w-[1480px] px-6 pb-20 xl:px-10">
@@ -482,7 +522,15 @@ export default function Home() {
           </button>
           {showHistory && (
             <div className="mt-5">
-              <div className="mb-4 flex justify-end">
+              <div className="mb-4 flex justify-end gap-5">
+                {uniqueHistory.length > 0 && (
+                  <button
+                    onClick={exportHistory}
+                    className="flex items-center gap-2 text-xs text-[#9aabc4] hover:text-white"
+                  >
+                    <Download size={14} /> Exportar CSV
+                  </button>
+                )}
                 <button
                   onClick={clearHistory}
                   className="flex items-center gap-2 text-xs text-[#9aabc4] hover:text-white"

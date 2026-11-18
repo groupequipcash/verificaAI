@@ -23,7 +23,7 @@ npm run dev
 
 Cada pedido à API usa até duas consultas Serper, seis domínios e concorrência de três análises. A interface faz até três lotes por clique, interrompendo ao alcançar cinco aprovadas. Pode retornar menos de cinco. A análise tem limites de tempo e tamanho de HTML e não executa scripts. Sites que renderizam WhatsApp ou CNPJ somente via JavaScript podem ser descartados.
 
-O histórico e a deduplicação entre buscas ficam no `localStorage` de cada navegador, sem sincronização entre colaboradores. Não há banco de dados nem autenticação.
+O histórico e a deduplicação entre buscas ficam no `localStorage` de cada navegador, sem sincronização entre colaboradores. O histórico pode ser exportado em CSV. Não há banco de dados nem autenticação.
 
 ## Proteção de créditos
 
