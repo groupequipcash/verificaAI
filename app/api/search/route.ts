@@ -5,6 +5,15 @@ import { assertGlobalHistoryAvailable, GlobalHistoryUnavailable, reserveCompany 
 import { emptyStats, type Company, type SearchStats } from "@/lib/types";
 export const runtime = "nodejs";
 export const maxDuration = 60;
+// Read-only connectivity probe. It never calls Serper or reserves a company.
+export async function HEAD() {
+  try {
+    await assertGlobalHistoryAvailable();
+    return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
+  } catch {
+    return new Response(null, { status: 503, headers: { "cache-control": "no-store" } });
+  }
+}
 export async function POST(request: NextRequest) {
   let body: unknown;
   try {

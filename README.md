@@ -4,14 +4,14 @@ Ferramenta interna da FortAds para encontrar empresas brasileiras com site próp
 
 ## Execução local
 
-Requer Node.js 20.9+, uma chave Serper e um Redis Upstash. Copie `.env.example` para `.env.local`, preencha `SERPER_API_KEY`, `UPSTASH_REDIS_REST_URL` e `UPSTASH_REDIS_REST_TOKEN` localmente e execute:
+Requer Node.js 20.9+, uma chave Serper e um Redis Upstash. Copie `.env.example` para `.env.local`, preencha `SERPER_API_KEY` e um par de variáveis Redis localmente e execute:
 
 ```bash
 npm install
 npm run dev
 ```
 
-As três variáveis devem existir também nas variáveis de ambiente protegidas do projeto Vercel **existente** `verifica7` para produção. Conecte um banco Upstash Redis persistente ao projeto pela Vercel Marketplace, usando o token padrão com permissão de escrita. Nunca use o token de somente leitura. As credenciais são usadas apenas no servidor e não devem ir ao GitHub ou ao navegador. Sem Redis configurado ou disponível, `POST /api/search` responde 503 antes de consumir Serper e nenhum novo resultado é entregue.
+Em produção, a integração do projeto Vercel **existente** `verifica7` fornece `UPSTASH_REDIS_KV_REST_API_URL` e `UPSTASH_REDIS_KV_REST_API_TOKEN`; esse par tem prioridade. Os nomes anteriores `UPSTASH_REDIS_REST_URL` e `UPSTASH_REDIS_REST_TOKEN` continuam aceitos como alternativa. Cada par deve estar completo; o código não mistura URL de um par com token do outro. Use token com permissão de escrita. As credenciais são usadas apenas no servidor e não devem ir ao GitHub ou ao navegador. Sem Redis configurado ou disponível, `POST /api/search` responde 503 antes de consumir Serper e nenhum novo resultado é entregue. `HEAD /api/search` verifica somente a conexão Redis, sem chamar Serper nem reservar empresas (204 = conectado, 503 = indisponível).
 
 ## Fluxo de verificação
 
@@ -28,7 +28,7 @@ O Redis é a fonte de verdade da deduplicação entre operadores e navegadores. 
 
 ### Importar históricos anteriores
 
-Peça aos quatro operadores que abram **Histórico deste navegador → Exportar CSV** e enviem os quatro arquivos ao responsável técnico por um canal seguro. Execute a prévia local, com os mesmos `UPSTASH_REDIS_REST_URL` e `UPSTASH_REDIS_REST_TOKEN` de produção definidos apenas no ambiente do terminal:
+Peça aos quatro operadores que abram **Histórico deste navegador → Exportar CSV** e enviem os quatro arquivos ao responsável técnico por um canal seguro. Execute a prévia local, com um dos pares Redis acima definido apenas no ambiente do terminal:
 
 ```bash
 node scripts/import-history.mjs operador1.csv operador2.csv operador3.csv operador4.csv

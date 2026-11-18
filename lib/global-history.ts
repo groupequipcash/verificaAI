@@ -61,8 +61,11 @@ export function reservationCommand(cnpj: string, site: string) {
 
 type RedisReply = { result?: unknown; error?: unknown };
 export async function redisCommand(command: string[], fetcher: typeof fetch = fetch): Promise<unknown> {
-  const endpoint = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const integratedUrl = process.env.UPSTASH_REDIS_KV_REST_API_URL;
+  const integratedToken = process.env.UPSTASH_REDIS_KV_REST_API_TOKEN;
+  const useIntegratedNames = Boolean(integratedUrl && integratedToken);
+  const endpoint = useIntegratedNames ? integratedUrl : process.env.UPSTASH_REDIS_REST_URL;
+  const token = useIntegratedNames ? integratedToken : process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!endpoint || !token) throw new GlobalHistoryUnavailable();
   let url: URL;
   try {

@@ -8,11 +8,19 @@ import { normalizeCompanyIdentity, reservationCommand, reserveIdentity, assertGl
 
 const oldUrl = process.env.UPSTASH_REDIS_REST_URL;
 const oldToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+const integratedUrl = process.env.UPSTASH_REDIS_KV_REST_API_URL;
+const integratedToken = process.env.UPSTASH_REDIS_KV_REST_API_TOKEN;
 const setup = () => {
+  delete process.env.UPSTASH_REDIS_KV_REST_API_URL;
+  delete process.env.UPSTASH_REDIS_KV_REST_API_TOKEN;
   process.env.UPSTASH_REDIS_REST_URL = "https://example.upstash.io";
   process.env.UPSTASH_REDIS_REST_TOKEN = "test-token";
 };
 const restore = () => {
+  if (integratedUrl === undefined) delete process.env.UPSTASH_REDIS_KV_REST_API_URL;
+  else process.env.UPSTASH_REDIS_KV_REST_API_URL = integratedUrl;
+  if (integratedToken === undefined) delete process.env.UPSTASH_REDIS_KV_REST_API_TOKEN;
+  else process.env.UPSTASH_REDIS_KV_REST_API_TOKEN = integratedToken;
   if (oldUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
   else process.env.UPSTASH_REDIS_REST_URL = oldUrl;
   if (oldToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -56,10 +64,37 @@ test("only confirmed reservation permits delivery; errors fail closed", async ()
 });
 
 test("missing Redis configuration blocks every reservation", async () => {
+  delete process.env.UPSTASH_REDIS_KV_REST_API_URL;
+  delete process.env.UPSTASH_REDIS_KV_REST_API_TOKEN;
   delete process.env.UPSTASH_REDIS_REST_URL;
   delete process.env.UPSTASH_REDIS_REST_TOKEN;
   try {
     await assert.rejects(reserveIdentity("11222333000181", "example.com.br"), GlobalHistoryUnavailable);
+  } finally { restore(); }
+});
+
+test("Vercel integration variables take precedence over the legacy pair", async () => {
+  setup();
+  process.env.UPSTASH_REDIS_KV_REST_API_URL = "https://integrated.upstash.io";
+  process.env.UPSTASH_REDIS_KV_REST_API_TOKEN = "integrated-token";
+  try {
+    await assertGlobalHistoryAvailable(async (url, init) => {
+      assert.equal(url.hostname, "integrated.upstash.io");
+      assert.equal(init.headers.authorization, "Bearer integrated-token");
+      return new Response(JSON.stringify({ result: "PONG" }));
+    });
+  } finally { restore(); }
+});
+
+test("a partial integration pair falls back only to the complete legacy pair", async () => {
+  setup();
+  process.env.UPSTASH_REDIS_KV_REST_API_URL = "https://integrated.upstash.io";
+  try {
+    await assertGlobalHistoryAvailable(async (url, init) => {
+      assert.equal(url.hostname, "example.upstash.io");
+      assert.equal(init.headers.authorization, "Bearer test-token");
+      return new Response(JSON.stringify({ result: "PONG" }));
+    });
   } finally { restore(); }
 });
 
