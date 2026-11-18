@@ -67,6 +67,7 @@ export async function POST(request: NextRequest) {
             "Analisando sites, WhatsApp e CNPJ; consultando a BrasilAPI quando há evidências...",
         });
         const deadline = Date.now() + 45_000;
+        let registryNoticeSent = false;
         let i = Number(offset);
         for (; i < candidates.length && companies.length < 5; i += 3) {
           if (Date.now() > deadline - 22_000) break;
@@ -84,6 +85,10 @@ export async function POST(request: NextRequest) {
             stats.rejectedBranch += result.rejectedBranch;
             stats.rejectedInactive += result.rejectedInactive;
             stats.registryErrors += result.registryError;
+            if (result.registryIssue && !registryNoticeSent) {
+              send({ type: "notice", message: result.registryIssue });
+              registryNoticeSent = true;
+            }
             stats.rejectedAssociation += result.rejectedAssociation;
             stats.headquartersActive += result.headquartersActive;
             if (result.siteError) stats.siteErrors++;

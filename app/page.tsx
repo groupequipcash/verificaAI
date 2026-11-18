@@ -232,6 +232,7 @@ export default function Home() {
             if (!line) continue;
             const event = JSON.parse(line);
             if (event.type === "phase") setPhase(event.message);
+            if (event.type === "notice") setWarning(event.message);
             if (event.type === "company") {
               const c = event.company as Company;
               if (

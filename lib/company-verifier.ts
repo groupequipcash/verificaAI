@@ -13,6 +13,7 @@ export type VerificationResult = {
   rejectedInactive: number;
   siteError: boolean;
   registryError: number;
+  registryIssue: string | null;
   rejectedAssociation: number;
   headquartersActive: number;
 };
@@ -27,6 +28,7 @@ export async function verifyCompany(url: string): Promise<VerificationResult> {
     rejectedInactive: 0,
     siteError: false,
     registryError: 0,
+    registryIssue: null,
     rejectedAssociation: 0,
     headquartersActive: 0,
   };
@@ -52,11 +54,14 @@ export async function verifyCompany(url: string): Promise<VerificationResult> {
       result.rejectedInactive++;
       continue;
     }
-    if (
-      registration.status === "unavailable" ||
-      registration.status === "timeout"
-    ) {
+    if (registration.status === "timeout") {
       result.registryError++;
+      result.registryIssue = "BrasilAPI: tempo de resposta esgotado.";
+      continue;
+    }
+    if (registration.status === "unavailable") {
+      result.registryError++;
+      result.registryIssue = `BrasilAPI HTTP ${registration.httpStatus || "indisponível"}: consulta cadastral não concluída.`;
       continue;
     }
     if (registration.status !== "approved") continue;
