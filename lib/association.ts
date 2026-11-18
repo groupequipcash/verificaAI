@@ -55,6 +55,11 @@ export function associationMatches(
   const names = [data.nome_fantasia || "", data.razao_social || ""].filter(
     Boolean,
   );
+  if (
+    site.cnpjs.length > 1 &&
+    !names.some((name) => nameMatches(name, site.identityText))
+  )
+    return false;
   if (names.some((name) => nameMatches(name, site.identityText))) return true;
   if (names.some((name) => nameMatches(name, evidence.context))) return true;
   if (names.some((name) => nameMatches(name, site.text))) return true;

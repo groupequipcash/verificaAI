@@ -104,6 +104,18 @@ test("associa marca publicada no site sem exigir palavra no domínio", () => {
     ),
     false,
   );
+  assert.equal(
+    associationMatches(
+      {
+        ...site,
+        identityText: "Guia comercial",
+        cnpjs: [evidence, { ...evidence, cnpj: "00000000000191" }],
+      },
+      { nome_fantasia: "Casa Azul", municipio: "Curitiba" },
+      evidence,
+    ),
+    false,
+  );
 });
 test("distingue matriz ativa, filial e inativa", () => {
   assert.equal(
