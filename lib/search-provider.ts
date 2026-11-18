@@ -24,6 +24,12 @@ const sectors = [
   "loja de cosméticos",
   "indústria de embalagens",
   "loja de tintas",
+  "empresas comerciais",
+  "empresas de serviços",
+  "indústrias brasileiras",
+  "fornecedores locais",
+  "lojas especializadas",
+  "fabricantes brasileiros",
 ];
 const places = [
   "São Paulo SP",
@@ -54,12 +60,42 @@ const places = [
   "Brasília DF",
   "Rio de Janeiro RJ",
 ];
+const states = [
+  "São Paulo",
+  "Minas Gerais",
+  "Paraná",
+  "Rio Grande do Sul",
+  "Bahia",
+  "Pernambuco",
+  "Ceará",
+  "Goiás",
+  "Pará",
+  "Amazonas",
+  "Espírito Santo",
+  "Santa Catarina",
+  "Mato Grosso",
+  "Mato Grosso do Sul",
+  "Paraíba",
+  "Rio Grande do Norte",
+  "Piauí",
+  "Maranhão",
+  "Alagoas",
+  "Sergipe",
+  "Tocantins",
+  "Rondônia",
+  "Acre",
+  "Roraima",
+  "Amapá",
+  "Distrito Federal",
+  "Rio de Janeiro",
+];
 const blocked =
   /(^|\.)(instagram|facebook|linkedin|youtube|tiktok|mercadolivre|amazon|google|maps|cnpj|econodata|empresascnpj|jusbrasil|reclameaqui|guiamais|solutudo|telelistas|apontador|indeed|glassdoor|wikipedia)\./i;
 export function queryFor(cursor: number) {
   const s = sectors[(cursor * 7) % sectors.length];
-  const p =
-    places[(cursor * 11 + Math.floor(cursor / places.length)) % places.length];
+  const index =
+    (cursor * 11 + Math.floor(cursor / places.length)) % places.length;
+  const p = cursor % 3 === 0 ? states[index] : places[index];
   return `${s} ${p} site oficial WhatsApp CNPJ`;
 }
 export async function searchSites(cursor: number): Promise<string[]> {
