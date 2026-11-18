@@ -4,14 +4,14 @@ Ferramenta interna da FortAds para encontrar empresas brasileiras com site próp
 
 ## Execução local
 
-Requer Node.js 20.9+ e uma chave Serper. Copie `.env.example` para `.env.local`, preencha `SERPER_API_KEY` localmente e execute:
+Requer Node.js 20.9+, uma chave Serper e um Redis Upstash. Copie `.env.example` para `.env.local`, preencha `SERPER_API_KEY`, `UPSTASH_REDIS_REST_URL` e `UPSTASH_REDIS_REST_TOKEN` localmente e execute:
 
 ```bash
 npm install
 npm run dev
 ```
 
-`SERPER_API_KEY` deve existir também nas variáveis de ambiente do projeto Vercel `verifica7` para produção. A chave é usada apenas na rota de servidor.
+As três variáveis devem existir também nas variáveis de ambiente protegidas do projeto Vercel **existente** `verifica7` para produção. Conecte um banco Upstash Redis persistente ao projeto pela Vercel Marketplace, usando o token padrão com permissão de escrita. Nunca use o token de somente leitura. As credenciais são usadas apenas no servidor e não devem ir ao GitHub ou ao navegador. Sem Redis configurado ou disponível, `POST /api/search` responde 503 antes de consumir Serper e nenhum novo resultado é entregue.
 
 ## Fluxo de verificação
 
@@ -19,11 +19,27 @@ npm run dev
 2. O servidor abre o site público, no máximo a página inicial e duas páginas institucionais ou de contato.
 3. O próprio site deve publicar um link de WhatsApp e um CNPJ válido. O CNPJ não vem da pesquisa do Google.
 4. A BrasilAPI confirma `identificador_matriz_filial = 1`, `descricao_identificador_matriz_filial = MATRIZ` e `descricao_situacao_cadastral = ATIVA`.
-5. O nome cadastral é confrontado com identidade, conteúdo e contexto do CNPJ publicados no site. O domínio não precisa conter a razão social. Apenas aprovados aparecem.
+5. O nome cadastral é confrontado com identidade, conteúdo e contexto do CNPJ publicados no site. O domínio não precisa conter a razão social.
+6. Antes de transmitir cada empresa aprovada, um script Lua no Redis verifica e grava **atomicamente** o CNPJ e o domínio normalizados. Se qualquer chave já existir, a empresa é descartada e a busca continua. As chaves não recebem TTL.
 
 Cada lote usa uma consulta Serper, até 15 domínios e concorrência de três análises. A interface faz até quatro lotes por clique, interrompendo ao alcançar cinco aprovadas. O servidor encerra um lote antes do limite de execução e permite retomar a partir do próximo candidato. Pode retornar menos de cinco. A análise tem limites de tempo, redirecionamento e tamanho de HTML e não executa scripts. Sites que renderizam WhatsApp ou CNPJ somente via JavaScript podem ser descartados. O painel mostra contadores por etapa e separa falhas técnicas de rejeições cadastrais.
 
-O histórico e a deduplicação entre buscas ficam no `localStorage` de cada navegador, sem sincronização entre colaboradores. O histórico pode ser exportado em CSV. Não há banco de dados nem autenticação.
+O Redis é a fonte de verdade da deduplicação entre operadores e navegadores. O `localStorage` continua apenas como histórico individual, exportação CSV e filtro auxiliar para evitar trabalho desnecessário. Limpar o histórico local não libera uma empresa reservada globalmente. Não há login nem endpoint público para limpar ou importar o histórico global.
+
+### Importar históricos anteriores
+
+Peça aos quatro operadores que abram **Histórico deste navegador → Exportar CSV** e enviem os quatro arquivos ao responsável técnico por um canal seguro. Execute a prévia local, com os mesmos `UPSTASH_REDIS_REST_URL` e `UPSTASH_REDIS_REST_TOKEN` de produção definidos apenas no ambiente do terminal:
+
+```bash
+node scripts/import-history.mjs operador1.csv operador2.csv operador3.csv operador4.csv
+node scripts/import-history.mjs --apply operador1.csv operador2.csv operador3.csv operador4.csv
+```
+
+O script normaliza CNPJ e domínio, ignora linhas inválidas, remove duplicidades nos arquivos e usa a mesma reserva atômica do servidor. Não apaga os arquivos nem o histórico dos navegadores. **Empresas exibidas antes desta mudança só serão bloqueadas globalmente depois de importar seus registros.** O histórico antigo era limitado aos 500 registros mais recentes por navegador; registros já apagados ou fora desse limite não podem ser recuperados automaticamente. Guarde os CSVs fora do repositório.
+
+### Política de entrega
+
+A reserva é confirmada **antes** de enviar o cartão ao navegador. Uma resposta 0 do Redis indica duplicidade; erro ou resposta incerta interrompe a pesquisa sem enviar a empresa. Se a conexão cair depois da reserva e antes de o cartão chegar ao navegador, a empresa permanece reservada e poderá não ter sido vista por ninguém. Essa política prioriza a garantia de nunca entregar a mesma empresa duas vezes. Não existe confirmação de leitura nem liberação automática, pois isso abriria uma janela para duplicidade. Redis deve ter persistência habilitada e não sofrer limpeza manual das chaves `verifica-ai:{companies}:*`.
 
 ## Proteção de créditos
 

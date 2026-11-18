@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { searchSites } from "@/lib/search-provider";
 import { verifyCompany } from "@/lib/company-verifier";
+import { assertGlobalHistoryAvailable, GlobalHistoryUnavailable, reserveCompany } from "@/lib/global-history";
 import { emptyStats, type Company, type SearchStats } from "@/lib/types";
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -46,6 +47,15 @@ export async function POST(request: NextRequest) {
       },
       { status: 503 },
     );
+  try {
+    // Fail before spending Serper credits when the shared history cannot be reached.
+    await assertGlobalHistoryAvailable();
+  } catch {
+    return NextResponse.json(
+      { error: new GlobalHistoryUnavailable().message },
+      { status: 503 },
+    );
+  }
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
@@ -100,6 +110,9 @@ export async function POST(request: NextRequest) {
               !seen.has(c.cnpj) &&
               !seen.has(c.domain)
             ) {
+              // The atomic reservation is the only authority for delivery.
+              // A failed or uncertain write stops the search before this card is sent.
+              if (!(await reserveCompany(c))) continue;
               companies.push(c);
               seen.add(c.cnpj);
               seen.add(c.domain);
