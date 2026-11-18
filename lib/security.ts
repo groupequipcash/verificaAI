@@ -56,6 +56,9 @@ export function safeWebUrl(raw: string) {
   if (isIP(host) && !isPublicIp(host)) throw new Error("IP privado");
   return u;
 }
+export function pinnedDnsResult(address: string, family: number, all: boolean) {
+  return all ? [{ address, family }] : { address, family };
+}
 export async function fetchPublicHtml(
   raw: string,
   redirects = 0,
@@ -78,7 +81,18 @@ export async function fetchPublicHtml(
           accept: "text/html,application/xhtml+xml",
           "accept-encoding": "identity",
         },
-        lookup: (_host, _opts, cb) => cb(null, pinned.address, pinned.family),
+        lookup: (_host, opts, cb) => {
+          if (opts.all)
+            cb(
+              null,
+              pinnedDnsResult(
+                pinned.address,
+                pinned.family,
+                true,
+              ) as typeof addresses,
+            );
+          else cb(null, pinned.address, pinned.family);
+        },
       },
       (res) => {
         const status = res.statusCode || 0;

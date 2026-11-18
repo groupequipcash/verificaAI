@@ -19,15 +19,29 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
-import type { Company, SearchStats } from "@/lib/types";
+import { emptyStats, type Company, type SearchStats } from "@/lib/types";
 const HISTORY_KEY = "verifica-ai-history-v1";
-const EMPTY: SearchStats = {
-  candidates: 0,
-  sitesAnalyzed: 0,
-  withWhatsappAndCnpj: 0,
-  headquartersActive: 0,
-  approved: 0,
-};
+const EMPTY = emptyStats();
+const MAX_BATCHES = 4;
+function predominantReason(stats: SearchStats) {
+  if (!stats.googleSites)
+    return "A pesquisa não recebeu sites orgânicos do Google.";
+  if (!stats.sitesAnalyzed && stats.siteErrors)
+    return "Os sites encontrados não puderam ser acessados. Verifique bloqueios ou instabilidade dos sites.";
+  if (!stats.withWhatsapp)
+    return "Nenhum site analisado publicou um link de WhatsApp verificável.";
+  if (!stats.withCnpj)
+    return "Os sites com WhatsApp não publicaram um CNPJ válido localizável.";
+  if (stats.registryErrors >= stats.cnpjsQueried && stats.cnpjsQueried)
+    return "A BrasilAPI não respondeu às consultas cadastrais; tente novamente mais tarde.";
+  if (stats.rejectedBranch > stats.rejectedInactive && stats.rejectedBranch > 0)
+    return "A maioria dos CNPJs consultados corresponde a filiais.";
+  if (stats.rejectedInactive > 0)
+    return "A maioria dos CNPJs consultados não está ativa.";
+  if (stats.rejectedAssociation > 0)
+    return "Não foi possível comprovar a relação entre alguns CNPJs e seus sites.";
+  return "Os demais candidatos não passaram por todos os critérios de verificação.";
+}
 function readHistory(): Company[] {
   try {
     const data = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
@@ -139,6 +153,9 @@ export default function Home() {
   const [error, setError] = useState("");
   const [showHistory, setShowHistory] = useState(false);
   const [cursor, setCursor] = useState(0);
+  const [candidateOffset, setCandidateOffset] = useState(0);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [warning, setWarning] = useState("");
   const run = useRef(false);
   useEffect(() => {
     const id = window.setTimeout(() => setHistory(readHistory()), 0);
@@ -166,13 +183,17 @@ export default function Home() {
     run.current = true;
     setBusy(true);
     setError("");
+    setWarning("");
+    setStats({ ...EMPTY });
+    setHasSearched(true);
     setPhase("Pesquisando empresas no Google...");
     let offset = cursor;
+    let siteOffset = candidateOffset;
     const next: Company[] = [];
     const tally: SearchStats = { ...EMPTY };
     const known = new Set(history.flatMap((c) => [c.cnpj, c.domain]));
     try {
-      for (let round = 0; round < 3 && next.length < 5; round++) {
+      for (let round = 0; round < MAX_BATCHES && next.length < 5; round++) {
         setPhase(
           round === 0
             ? "Pesquisando empresas no Google..."
@@ -183,6 +204,7 @@ export default function Home() {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             cursor: offset,
+            offset: siteOffset,
             excluded: [...known].slice(-500),
           }),
           cache: "no-store",
@@ -198,7 +220,7 @@ export default function Home() {
         const decoder = new TextDecoder();
         let pending = "";
         let finished = false;
-        let exhausted = false;
+        let interrupted = false;
         let batchStats: SearchStats = { ...EMPTY };
         while (true) {
           const { done, value } = await reader.read();
@@ -232,7 +254,8 @@ export default function Home() {
             }
             if (event.type === "done") {
               offset = event.nextCursor;
-              exhausted = event.exhausted;
+              siteOffset = event.nextOffset;
+              interrupted = event.interrupted;
               finished = true;
             }
             if (event.type === "error") throw new Error(event.message);
@@ -241,17 +264,12 @@ export default function Home() {
         if (!finished) throw new Error("A pesquisa foi interrompida.");
         for (const key of Object.keys(tally) as (keyof SearchStats)[])
           tally[key] += batchStats[key] || 0;
-        if (exhausted) break;
+        if (interrupted && round === MAX_BATCHES - 1)
+          setWarning(
+            "A pesquisa atingiu o limite de tempo deste clique. Clique novamente para continuar de onde parou.",
+          );
       }
       setPhase("Preparando resultados...");
-      setCursor(offset);
-      if (next.length) {
-        setHistory((previous) => {
-          const updated = [...previous, ...next].slice(-500);
-          localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
-          return updated;
-        });
-      }
     } catch (e) {
       setError(
         e instanceof Error
@@ -259,6 +277,19 @@ export default function Home() {
           : "Não foi possível concluir a pesquisa.",
       );
     } finally {
+      if (next.length) {
+        setHistory((previous) => {
+          const existing = new Set(previous.map((c) => c.cnpj));
+          const updated = [
+            ...previous,
+            ...next.filter((c) => !existing.has(c.cnpj)),
+          ].slice(-500);
+          localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+          return updated;
+        });
+      }
+      setCursor(offset);
+      setCandidateOffset(siteOffset);
       setBusy(false);
       setPhase("");
       run.current = false;
@@ -268,6 +299,7 @@ export default function Home() {
     localStorage.removeItem(HISTORY_KEY);
     setHistory([]);
     setCursor(0);
+    setCandidateOffset(0);
   }
   function exportHistory() {
     const cell = (value: string) =>
@@ -454,6 +486,55 @@ export default function Home() {
           >
             {error}
           </div>
+        )}
+        {warning && (
+          <div className="mt-4 rounded-xl border border-amber-700/40 bg-amber-500/10 px-5 py-4 text-sm text-amber-200">
+            {warning}
+          </div>
+        )}
+        {hasSearched && (stats.googleSites > 0 || (!busy && !error)) && (
+          <details
+            className="mt-7 rounded-2xl border border-[#23344d] bg-[#0d1929] p-5"
+            open={stats.approved === 0 && !busy}
+          >
+            <summary className="cursor-pointer text-sm font-semibold text-[#c8d8ef]">
+              Diagnóstico da pesquisa
+            </summary>
+            <div className="mt-4 grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
+              {[
+                ["Sites no Google", stats.googleSites],
+                ["Sites analisados", stats.sitesAnalyzed],
+                ["Com WhatsApp", stats.withWhatsapp],
+                ["Com CNPJ", stats.withCnpj],
+                ["CNPJs consultados", stats.cnpjsQueried],
+                ["Filiais rejeitadas", stats.rejectedBranch],
+                ["Inativas rejeitadas", stats.rejectedInactive],
+                ["Empresas aprovadas", stats.approved],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-lg bg-[#14243a] px-3 py-3">
+                  <div className="text-xs text-[#8399b8]">{label}</div>
+                  <div className="mt-1 font-bold text-white">{value}</div>
+                </div>
+              ))}
+            </div>
+            {!busy && stats.approved === 0 && (
+              <p className="mt-4 text-sm text-[#afc2df]">
+                Analisamos {stats.sitesAnalyzed} sites. Encontramos WhatsApp em{" "}
+                {stats.withWhatsapp}, CNPJ em {stats.withCnpj} e nenhuma empresa
+                passou por todos os critérios. {predominantReason(stats)}
+              </p>
+            )}
+            {(stats.siteErrors > 0 ||
+              stats.registryErrors > 0 ||
+              stats.rejectedAssociation > 0) && (
+              <p className="mt-2 text-xs text-[#7892b5]">
+                Falhas de acesso a sites: {stats.siteErrors} · Falhas na
+                BrasilAPI: {stats.registryErrors} · Associação site/CNPJ não
+                confirmada: {stats.rejectedAssociation}. Falhas técnicas não são
+                contadas como rejeições cadastrais.
+              </p>
+            )}
+          </details>
         )}
         <section className="mt-10">
           <div className="mb-5 flex flex-wrap items-end justify-between gap-3">

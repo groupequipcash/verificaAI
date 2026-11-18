@@ -13,16 +13,30 @@ export type Company = {
   foundAt: string;
 };
 export type SearchStats = {
-  candidates: number;
+  googleSites: number;
   sitesAnalyzed: number;
-  withWhatsappAndCnpj: number;
+  withWhatsapp: number;
+  withCnpj: number;
+  cnpjsQueried: number;
+  rejectedBranch: number;
+  rejectedInactive: number;
+  siteErrors: number;
+  registryErrors: number;
+  rejectedAssociation: number;
   headquartersActive: number;
   approved: number;
 };
-export type SearchResponse = {
-  companies: Company[];
-  stats: SearchStats;
-  nextCursor: number;
-  exhausted: boolean;
-  warning?: string;
-};
+export const emptyStats = (): SearchStats => ({
+  googleSites: 0,
+  sitesAnalyzed: 0,
+  withWhatsapp: 0,
+  withCnpj: 0,
+  cnpjsQueried: 0,
+  rejectedBranch: 0,
+  rejectedInactive: 0,
+  siteErrors: 0,
+  registryErrors: 0,
+  rejectedAssociation: 0,
+  headquartersActive: 0,
+  approved: 0,
+});

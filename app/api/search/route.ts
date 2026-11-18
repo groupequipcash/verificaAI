@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { searchSites } from "@/lib/search-provider";
 import { verifyCompany } from "@/lib/company-verifier";
-import type { Company, SearchStats } from "@/lib/types";
+import { emptyStats, type Company, type SearchStats } from "@/lib/types";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 export async function POST(request: NextRequest) {
@@ -21,11 +21,15 @@ export async function POST(request: NextRequest) {
     );
   const b = body as Record<string, unknown>;
   const cursor = b.cursor;
+  const offset = b.offset ?? 0;
   const excluded = b.excluded;
   if (
     !Number.isInteger(cursor) ||
     Number(cursor) < 0 ||
     Number(cursor) > 100_000 ||
+    !Number.isInteger(offset) ||
+    Number(offset) < 0 ||
+    Number(offset) > 15 ||
     !Array.isArray(excluded) ||
     excluded.length > 500 ||
     excluded.some((x) => typeof x !== "string" || x.length > 120)
@@ -49,22 +53,23 @@ export async function POST(request: NextRequest) {
         controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
       try {
         send({ type: "phase", message: "Pesquisando empresas no Google..." });
-        const candidates = await searchSites(Number(cursor));
+        const search = await searchSites(Number(cursor));
+        const candidates = search.sites;
         const seen = new Set(excluded as string[]);
         const companies: Company[] = [];
         const stats: SearchStats = {
-          candidates: candidates.length,
-          sitesAnalyzed: 0,
-          withWhatsappAndCnpj: 0,
-          headquartersActive: 0,
-          approved: 0,
+          ...emptyStats(),
+          googleSites: Number(offset) === 0 ? search.organicCount : 0,
         };
         send({
           type: "phase",
           message:
             "Analisando sites, WhatsApp e CNPJ; consultando a BrasilAPI quando há evidências...",
         });
-        for (let i = 0; i < candidates.length && companies.length < 5; i += 3) {
+        const deadline = Date.now() + 45_000;
+        let i = Number(offset);
+        for (; i < candidates.length && companies.length < 5; i += 3) {
+          if (Date.now() > deadline - 22_000) break;
           const group = candidates
             .slice(i, i + 3)
             .filter(
@@ -72,9 +77,16 @@ export async function POST(request: NextRequest) {
             );
           const results = await Promise.all(group.map(verifyCompany));
           for (const result of results) {
-            if (result.siteAnalyzed) stats.sitesAnalyzed++;
-            if (result.evidence) stats.withWhatsappAndCnpj++;
-            if (result.registered) stats.headquartersActive++;
+            if (result.analyzed) stats.sitesAnalyzed++;
+            if (result.withWhatsapp) stats.withWhatsapp++;
+            if (result.withCnpj) stats.withCnpj++;
+            stats.cnpjsQueried += result.cnpjsQueried;
+            stats.rejectedBranch += result.rejectedBranch;
+            stats.rejectedInactive += result.rejectedInactive;
+            stats.registryErrors += result.registryError;
+            stats.rejectedAssociation += result.rejectedAssociation;
+            stats.headquartersActive += result.headquartersActive;
+            if (result.siteError) stats.siteErrors++;
             const c = result.company;
             if (
               c &&
@@ -95,8 +107,12 @@ export async function POST(request: NextRequest) {
         send({
           type: "done",
           stats,
-          nextCursor: Number(cursor) + 2,
-          exhausted: candidates.length === 0,
+          nextCursor:
+            i < candidates.length && companies.length < 5
+              ? Number(cursor)
+              : Number(cursor) + 1,
+          nextOffset: i < candidates.length && companies.length < 5 ? i : 0,
+          interrupted: i < candidates.length && companies.length < 5,
         });
       } catch (error) {
         send({

@@ -96,40 +96,67 @@ export function queryFor(cursor: number) {
   const index =
     (cursor * 11 + Math.floor(cursor / places.length)) % places.length;
   const p = cursor % 3 === 0 ? states[index] : places[index];
-  return `${s} ${p} site oficial WhatsApp CNPJ`;
+  return `${s} ${p} ${cursor % 2 ? "atendimento WhatsApp site oficial" : "empresa WhatsApp contato site oficial"} -instagram -facebook -linkedin -econodata`;
 }
-export async function searchSites(cursor: number): Promise<string[]> {
+const shortCache = new Map<
+  number,
+  { at: number; sites: string[]; organicCount: number }
+>();
+export async function searchSites(
+  cursor: number,
+): Promise<{ sites: string[]; organicCount: number }> {
   const key = process.env.SERPER_API_KEY;
   if (!key) throw new Error("SERPER_API_KEY não configurada");
+  const cached = shortCache.get(cursor);
+  if (cached && Date.now() - cached.at < 300_000)
+    return { sites: cached.sites, organicCount: cached.organicCount };
   const urls: string[] = [];
-  for (let i = 0; i < 2; i++) {
-    const res = await fetch("https://google.serper.dev/search", {
+  let res: Response;
+  try {
+    res = await fetch("https://google.serper.dev/search", {
       method: "POST",
       headers: { "X-API-KEY": key, "content-type": "application/json" },
       body: JSON.stringify({
-        q: queryFor(cursor + i),
+        q: queryFor(cursor),
         gl: "br",
         hl: "pt-br",
-        num: 10,
+        num: 20,
       }),
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(7000),
       cache: "no-store",
     });
-    if (!res.ok) throw new Error(`Serper indisponível (${res.status})`);
-    const data = (await res.json()) as { organic?: { link?: string }[] };
-    for (const item of data.organic || []) {
-      if (!item.link) continue;
-      try {
-        const u = safeWebUrl(item.link);
-        if (
-          !blocked.test(u.hostname) &&
-          !urls.some((x) => new URL(x).hostname === u.hostname)
-        )
-          urls.push(u.toString());
-      } catch {
-        /* candidato inválido */
-      }
+  } catch (error) {
+    throw new Error(
+      error instanceof Error &&
+      /timeout|abort/i.test(error.name + " " + error.message)
+        ? "Serper: tempo de resposta esgotado. A pesquisa pode ser retomada."
+        : "Serper: conexão indisponível. Tente novamente.",
+    );
+  }
+  if (!res.ok)
+    throw new Error(
+      `Serper HTTP ${res.status}: ${res.status === 429 ? "limite de consultas atingido" : res.status === 401 || res.status === 403 ? "chave inválida ou sem acesso" : "serviço de pesquisa indisponível"}.`,
+    );
+  const data = (await res.json()) as { organic?: { link?: string }[] };
+  for (const item of data.organic || []) {
+    if (!item.link) continue;
+    try {
+      const u = safeWebUrl(item.link);
+      if (
+        !blocked.test(u.hostname) &&
+        !urls.some((x) => new URL(x).hostname === u.hostname)
+      )
+        urls.push(u.toString());
+    } catch {
+      /* candidato inválido */
     }
   }
-  return urls.slice(0, 6);
+  const result = {
+    sites: urls.slice(0, 15),
+    organicCount: (data.organic || []).filter((item) => Boolean(item.link))
+      .length,
+  };
+  shortCache.set(cursor, { ...result, at: Date.now() });
+  if (shortCache.size > 30) shortCache.delete(shortCache.keys().next().value!);
+  return result;
 }
