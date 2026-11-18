@@ -9,6 +9,7 @@ import { extractWhatsapp } from "../lib/whatsapp-extractor.ts";
 import { isPublicIp, pinnedDnsResult, safeWebUrl } from "../lib/security.ts";
 import { associationMatches, nameMatches } from "../lib/association.ts";
 import { classifyRegistration } from "../lib/registration-classifier.ts";
+import { isDirectorySite } from "../lib/directory-classifier.ts";
 
 test("aceita CNPJ válido encontrado no site e rejeita dígito inválido", () => {
   assert.equal(isValidCnpj("11.222.333/0001-81"), true);
@@ -128,6 +129,23 @@ test("distingue matriz ativa, filial e inativa", () => {
       descricao_situacao_cadastral: "BAIXADA",
     }),
     "inactive",
+  );
+});
+test("rejeita páginas de listagem como site próprio", () => {
+  assert.equal(
+    isDirectorySite("empresas.listapa.com.br", "Agência Ideia Criativa"),
+    true,
+  );
+  assert.equal(
+    isDirectorySite(
+      "casadamidia.com",
+      "Guia de empresas. Cadastre sua empresa aqui.",
+    ),
+    true,
+  );
+  assert.equal(
+    isDirectorySite("solinemoveis.com.br", "Soline Móveis - Loja oficial"),
+    false,
   );
 });
 test("bloqueia destinos internos e esquemas não HTTP", () => {

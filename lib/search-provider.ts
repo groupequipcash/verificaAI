@@ -90,7 +90,7 @@ const states = [
   "Rio de Janeiro",
 ];
 const blocked =
-  /(^|\.)(instagram|facebook|linkedin|youtube|tiktok|mercadolivre|amazon|google|maps|cnpj|econodata|empresascnpj|jusbrasil|reclameaqui|guiamais|solutudo|telelistas|apontador|indeed|glassdoor|wikipedia)\./i;
+  /(^|\.)(instagram|facebook|linkedin|youtube|tiktok|mercadolivre|amazon|google|maps|cnpj|econodata|empresascnpj|jusbrasil|reclameaqui|guiamais|solutudo|telelistas|apontador|indeed|glassdoor|wikipedia|listapa|casadamidia)\./i;
 export function queryFor(cursor: number) {
   const s = sectors[(cursor * 7) % sectors.length];
   const index =

@@ -23,6 +23,7 @@ export type SearchStats = {
   siteErrors: number;
   registryErrors: number;
   rejectedAssociation: number;
+  rejectedDirectory: number;
   headquartersActive: number;
   approved: number;
 };
@@ -37,6 +38,7 @@ export const emptyStats = (): SearchStats => ({
   siteErrors: 0,
   registryErrors: 0,
   rejectedAssociation: 0,
+  rejectedDirectory: 0,
   headquartersActive: 0,
   approved: 0,
 });

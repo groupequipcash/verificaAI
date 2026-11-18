@@ -6,17 +6,31 @@ import {
 } from "./cnpj-extractor";
 import { fetchPublicHtml } from "./security";
 import { extractWhatsapp, type WhatsappEvidence } from "./whatsapp-extractor";
+import { isDirectorySite } from "./directory-classifier";
 export type SiteEvidence = {
   site: string;
   domain: string;
+  directory: boolean;
   cnpjs: (CnpjEvidence & { source: string })[];
   whatsapp: WhatsappEvidence | null;
   text: string;
   identityText: string;
 };
 export async function analyzeSite(candidate: string): Promise<SiteEvidence> {
-  const home = await fetchPublicHtml(candidate);
+  const home = await fetchPublicHtml(new URL(candidate).origin);
   const origin = new URL(home.url).origin;
+  const homeText = visibleSiteText(home.html).slice(0, 40_000);
+  const directory = isDirectorySite(new URL(origin).hostname, homeText);
+  if (directory)
+    return {
+      site: origin,
+      domain: new URL(origin).hostname.replace(/^www\./, ""),
+      directory: true,
+      cnpjs: [],
+      whatsapp: null,
+      text: homeText,
+      identityText: "",
+    };
   const pages = [home];
   const hrefs = [
     ...decodeHtml(home.html).matchAll(/href\s*=\s*["']([^"']+)["']/gi),
@@ -70,6 +84,7 @@ export async function analyzeSite(candidate: string): Promise<SiteEvidence> {
   return {
     site: origin,
     domain: new URL(origin).hostname.replace(/^www\./, ""),
+    directory: false,
     cnpjs,
     whatsapp,
     text,

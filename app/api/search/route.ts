@@ -90,6 +90,7 @@ export async function POST(request: NextRequest) {
               registryNoticeSent = true;
             }
             stats.rejectedAssociation += result.rejectedAssociation;
+            if (result.rejectedDirectory) stats.rejectedDirectory++;
             stats.headquartersActive += result.headquartersActive;
             if (result.siteError) stats.siteErrors++;
             const c = result.company;

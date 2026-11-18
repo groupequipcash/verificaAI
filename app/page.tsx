@@ -20,7 +20,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { emptyStats, type Company, type SearchStats } from "@/lib/types";
-const HISTORY_KEY = "verifica-ai-history-v1";
+const HISTORY_KEY = "verifica-ai-history-v2";
 const EMPTY = emptyStats();
 const MAX_BATCHES = 4;
 function predominantReason(stats: SearchStats) {
@@ -40,6 +40,8 @@ function predominantReason(stats: SearchStats) {
     return "A maioria dos CNPJs consultados não está ativa.";
   if (stats.rejectedAssociation > 0)
     return "Não foi possível comprovar a relação entre alguns CNPJs e seus sites.";
+  if (stats.rejectedDirectory > 0)
+    return "Alguns resultados pertencem a diretórios de terceiros, não a sites próprios.";
   return "Os demais candidatos não passaram por todos os critérios de verificação.";
 }
 function readHistory(): Company[] {
@@ -530,9 +532,10 @@ export default function Home() {
               stats.rejectedAssociation > 0) && (
               <p className="mt-2 text-xs text-[#7892b5]">
                 Falhas de acesso a sites: {stats.siteErrors} · Falhas na
-                BrasilAPI: {stats.registryErrors} · Associação site/CNPJ não
-                confirmada: {stats.rejectedAssociation}. Falhas técnicas não são
-                contadas como rejeições cadastrais.
+                BrasilAPI: {stats.registryErrors} · Diretórios:{" "}
+                {stats.rejectedDirectory} · Associação site/CNPJ não confirmada:{" "}
+                {stats.rejectedAssociation}. Falhas técnicas não são contadas
+                como rejeições cadastrais.
               </p>
             )}
           </details>

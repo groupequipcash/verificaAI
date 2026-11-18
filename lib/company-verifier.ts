@@ -15,6 +15,7 @@ export type VerificationResult = {
   registryError: number;
   registryIssue: string | null;
   rejectedAssociation: number;
+  rejectedDirectory: boolean;
   headquartersActive: number;
 };
 export async function verifyCompany(url: string): Promise<VerificationResult> {
@@ -30,6 +31,7 @@ export async function verifyCompany(url: string): Promise<VerificationResult> {
     registryError: 0,
     registryIssue: null,
     rejectedAssociation: 0,
+    rejectedDirectory: false,
     headquartersActive: 0,
   };
   let site: SiteEvidence;
@@ -40,6 +42,7 @@ export async function verifyCompany(url: string): Promise<VerificationResult> {
     return result;
   }
   result.analyzed = true;
+  if (site.directory) { result.rejectedDirectory = true; return result; }
   result.withWhatsapp = Boolean(site.whatsapp);
   result.withCnpj = site.cnpjs.length > 0;
   if (!site.whatsapp || !site.cnpjs.length) return result;
