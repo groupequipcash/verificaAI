@@ -26,6 +26,7 @@ export type SearchStats = {
   rejectedAssociation: number;
   rejectedDirectory: number;
   headquartersActive: number;
+  alreadyPresented: number;
   approved: number;
 };
 export const emptyStats = (): SearchStats => ({
@@ -41,5 +42,6 @@ export const emptyStats = (): SearchStats => ({
   rejectedAssociation: 0,
   rejectedDirectory: 0,
   headquartersActive: 0,
+  alreadyPresented: 0,
   approved: 0,
 });

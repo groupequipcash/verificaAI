@@ -115,15 +115,17 @@ export async function POST(request: NextRequest) {
             stats.headquartersActive += result.headquartersActive;
             if (result.siteError) stats.siteErrors++;
             const c = result.company;
-            if (
-              c &&
-              companies.length < 5 &&
-              !seen.has(c.cnpj) &&
-              !seen.has(c.domain)
-            ) {
+            if (c && companies.length < 5) {
+              if (seen.has(c.cnpj) || seen.has(c.domain)) {
+                stats.alreadyPresented++;
+                continue;
+              }
               // The atomic reservation is the only authority for delivery.
               // A failed or uncertain write stops the search before this card is sent.
-              if (!(await reserveCompany(c))) continue;
+              if (!(await reserveCompany(c))) {
+                stats.alreadyPresented++;
+                continue;
+              }
               companies.push(c);
               seen.add(c.cnpj);
               seen.add(c.domain);

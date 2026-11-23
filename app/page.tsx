@@ -40,6 +40,8 @@ function predominantReason(stats: SearchStats) {
     return "A maioria dos CNPJs consultados não está ativa.";
   if (stats.rejectedAssociation > 0)
     return "Não foi possível comprovar a relação entre alguns CNPJs e seus sites.";
+  if (stats.alreadyPresented > 0)
+    return `${stats.alreadyPresented} empresa${stats.alreadyPresented === 1 ? " qualificada já havia sido apresentada" : "s qualificadas já haviam sido apresentadas"} e foi${stats.alreadyPresented === 1 ? "" : "ram"} omitida${stats.alreadyPresented === 1 ? "" : "s"} para evitar repetição.`;
   if (stats.rejectedDirectory > 0)
     return "Alguns resultados pertencem a diretórios de terceiros, não a sites próprios.";
   return "Os demais candidatos não passaram por todos os critérios de verificação.";
@@ -524,18 +526,19 @@ export default function Home() {
               <p className="mt-4 text-sm text-[#afc2df]">
                 Analisamos {stats.sitesAnalyzed} sites. Encontramos WhatsApp em{" "}
                 {stats.withWhatsapp}, CNPJ em {stats.withCnpj} e nenhuma empresa
-                passou por todos os critérios. {predominantReason(stats)}
+                nova foi entregue nesta pesquisa. {predominantReason(stats)}
               </p>
             )}
             {(stats.siteErrors > 0 ||
               stats.registryErrors > 0 ||
-              stats.rejectedAssociation > 0) && (
+              stats.rejectedAssociation > 0 ||
+              stats.alreadyPresented > 0) && (
               <p className="mt-2 text-xs text-[#7892b5]">
-                Falhas de acesso a sites: {stats.siteErrors} · Falhas na
-                Serviços cadastrais: {stats.registryErrors} · Diretórios:{" "}
+                Falhas de acesso a sites: {stats.siteErrors} · Falhas nos
+                serviços cadastrais: {stats.registryErrors} · Diretórios:{" "}
                 {stats.rejectedDirectory} · Associação site/CNPJ não confirmada:{" "}
-                {stats.rejectedAssociation}. Falhas técnicas não são contadas
-                como rejeições cadastrais.
+                {stats.rejectedAssociation} · Já apresentadas: {stats.alreadyPresented}.
+                Falhas técnicas não são contadas como rejeições cadastrais.
               </p>
             )}
           </details>
@@ -576,7 +579,7 @@ export default function Home() {
             <div className="mt-6 text-center">
               <p className="mb-4 text-sm text-[#8fa2bd]">
                 {stats.approved < 5
-                  ? `Encontramos ${stats.approved} empresa${stats.approved === 1 ? "" : "s"} que atende${stats.approved === 1 ? "" : "m"} a todos os critérios nesta pesquisa. Os demais candidatos não passaram pela verificação.`
+                  ? `Encontramos ${stats.approved} empresa${stats.approved === 1 ? "" : "s"} nova${stats.approved === 1 ? "" : "s"} nesta pesquisa. ${stats.alreadyPresented ? `${stats.alreadyPresented} já havia${stats.alreadyPresented === 1 ? "" : "m"} sido apresentada${stats.alreadyPresented === 1 ? "" : "s"} e foi${stats.alreadyPresented === 1 ? "" : "ram"} omitida${stats.alreadyPresented === 1 ? "" : "s"}.` : "Os demais candidatos não passaram por todos os critérios."}`
                   : "Todas as empresas exibidas passaram pela verificação."}
               </p>
               <button
