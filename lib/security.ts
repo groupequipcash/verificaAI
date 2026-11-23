@@ -62,19 +62,30 @@ export function pinnedDnsResult(address: string, family: number, all: boolean) {
 export async function fetchPublicHtml(
   raw: string,
   redirects = 0,
+  deadline = Infinity,
 ): Promise<{ html: string; url: string }> {
   if (redirects > 3) throw new Error("Redirecionamentos excedidos");
   const url = safeWebUrl(raw);
-  const addresses = await lookup(url.hostname, { all: true, verbatim: true });
+  const dnsBudget = Math.min(4000, deadline - Date.now());
+  if (dnsBudget < 1) throw new Error("Prazo de análise esgotado");
+  let dnsTimer: ReturnType<typeof setTimeout> | undefined;
+  const addresses = await Promise.race([
+    lookup(url.hostname, { all: true, verbatim: true }),
+    new Promise<never>((_, reject) => {
+      dnsTimer = setTimeout(() => reject(new Error("Prazo de DNS esgotado")), dnsBudget);
+    }),
+  ]).finally(() => { if (dnsTimer) clearTimeout(dnsTimer); });
   if (!addresses.length || addresses.some((a) => !isPublicIp(a.address)))
     throw new Error("DNS não público");
   const pinned = addresses[0];
+  const requestBudget = Math.min(4000, deadline - Date.now());
+  if (requestBudget < 1) throw new Error("Prazo de análise esgotado");
   return new Promise((resolve, reject) => {
     const req = (url.protocol === "https:" ? httpsRequest : httpRequest)(
       url,
       {
         method: "GET",
-        timeout: 4000,
+        timeout: requestBudget,
         maxHeaderSize: 16384,
         headers: {
           "user-agent": "VerificaAI/1.0 (+https://verifica7.vercel.app/)",
@@ -101,6 +112,7 @@ export async function fetchPublicHtml(
           fetchPublicHtml(
             new URL(res.headers.location, url).toString(),
             redirects + 1,
+            deadline,
           ).then(resolve, reject);
           return;
         }
@@ -133,6 +145,11 @@ export async function fetchPublicHtml(
         res.on("error", reject);
       },
     );
+    const absoluteTimer = setTimeout(
+      () => req.destroy(new Error("Prazo de análise esgotado")),
+      requestBudget,
+    );
+    req.on("close", () => clearTimeout(absoluteTimer));
     req.on("timeout", () => req.destroy(new Error("Tempo esgotado")));
     req.on("error", reject);
     req.end();

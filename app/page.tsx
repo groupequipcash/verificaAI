@@ -20,31 +20,19 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { emptyStats, type Company, type SearchStats } from "@/lib/types";
+import { predominantReason } from "@/lib/search-diagnostics";
 const HISTORY_KEY = "verifica-ai-history-v2";
+const SEARCH_PROGRESS_KEY = "verifica-ai-search-progress-v1";
 const EMPTY = emptyStats();
 const MAX_BATCHES = 4;
-function predominantReason(stats: SearchStats) {
-  if (!stats.googleSites)
-    return "A pesquisa não recebeu sites orgânicos do Google.";
-  if (!stats.sitesAnalyzed && stats.siteErrors)
-    return "Os sites encontrados não puderam ser acessados. Verifique bloqueios ou instabilidade dos sites.";
-  if (!stats.withWhatsapp)
-    return "Nenhum site analisado publicou um link de WhatsApp verificável.";
-  if (!stats.withCnpj)
-    return "Os sites com WhatsApp não publicaram um CNPJ válido localizável.";
-  if (stats.registryErrors >= stats.cnpjsQueried && stats.cnpjsQueried)
-    return "Os serviços cadastrais não responderam às consultas; tente novamente mais tarde.";
-  if (stats.rejectedBranch > stats.rejectedInactive && stats.rejectedBranch > 0)
-    return "A maioria dos CNPJs consultados corresponde a filiais.";
-  if (stats.rejectedInactive > 0)
-    return "A maioria dos CNPJs consultados não está ativa.";
-  if (stats.rejectedAssociation > 0)
-    return "Não foi possível comprovar a relação entre alguns CNPJs e seus sites.";
-  if (stats.alreadyPresented > 0)
-    return `${stats.alreadyPresented} empresa${stats.alreadyPresented === 1 ? " qualificada já havia sido apresentada" : "s qualificadas já haviam sido apresentadas"} e foi${stats.alreadyPresented === 1 ? "" : "ram"} omitida${stats.alreadyPresented === 1 ? "" : "s"} para evitar repetição.`;
-  if (stats.rejectedDirectory > 0)
-    return "Alguns resultados pertencem a diretórios de terceiros, não a sites próprios.";
-  return "Os demais candidatos não passaram por todos os critérios de verificação.";
+type SearchProgress = { leaseId: number; offset: number };
+function readSearchProgress(): SearchProgress | null {
+  try {
+    const value = JSON.parse(localStorage.getItem(SEARCH_PROGRESS_KEY) || "null");
+    return value && Number.isSafeInteger(value.leaseId) && value.leaseId >= 100001 &&
+      Number.isInteger(value.offset) && value.offset >= 0 && value.offset <= 20
+      ? value as SearchProgress : null;
+  } catch { return null; }
 }
 function readHistory(): Company[] {
   try {
@@ -156,10 +144,9 @@ export default function Home() {
   const [phase, setPhase] = useState("");
   const [error, setError] = useState("");
   const [showHistory, setShowHistory] = useState(false);
-  const [cursor, setCursor] = useState(0);
-  const [candidateOffset, setCandidateOffset] = useState(0);
   const [hasSearched, setHasSearched] = useState(false);
   const [warning, setWarning] = useState("");
+  const [timeLimited, setTimeLimited] = useState(false);
   const run = useRef(false);
   useEffect(() => {
     const id = window.setTimeout(() => setHistory(readHistory()), 0);
@@ -188,14 +175,16 @@ export default function Home() {
     setBusy(true);
     setError("");
     setWarning("");
+    setTimeLimited(false);
     setStats({ ...EMPTY });
     setHasSearched(true);
     setPhase("Pesquisando empresas no Google...");
-    let offset = cursor;
-    let siteOffset = candidateOffset;
+    let progress = readSearchProgress();
+    let expiredRetries = 0;
     const next: Company[] = [];
     const tally: SearchStats = { ...EMPTY };
     const known = new Set(history.flatMap((c) => [c.cnpj, c.domain]));
+    const countedLeases = new Set<number>();
     try {
       for (let round = 0; round < MAX_BATCHES && next.length < 5; round++) {
         setPhase(
@@ -207,12 +196,19 @@ export default function Home() {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            cursor: offset,
-            offset: siteOffset,
+            leaseId: progress?.leaseId,
+            offset: progress?.offset || 0,
             excluded: [...known].slice(-500),
           }),
           cache: "no-store",
         });
+        if (response.status === 410 && progress && expiredRetries < 1) {
+          progress = null;
+          localStorage.removeItem(SEARCH_PROGRESS_KEY);
+          expiredRetries++;
+          round--;
+          continue;
+        }
         if (!response.ok) {
           const payload = await response.json();
           throw new Error(
@@ -226,6 +222,7 @@ export default function Home() {
         let finished = false;
         let interrupted = false;
         let batchStats: SearchStats = { ...EMPTY };
+        let batchLeaseId: number | null = null;
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -235,6 +232,11 @@ export default function Home() {
           for (const line of lines) {
             if (!line) continue;
             const event = JSON.parse(line);
+            if (event.type === "lease") {
+              batchLeaseId = event.leaseId;
+              progress = { leaseId: event.leaseId, offset: progress?.offset || 0 };
+              localStorage.setItem(SEARCH_PROGRESS_KEY, JSON.stringify(progress));
+            }
             if (event.type === "phase") setPhase(event.message);
             if (event.type === "notice") setWarning(event.message);
             if (event.type === "company") {
@@ -251,16 +253,28 @@ export default function Home() {
               }
             }
             if (event.type === "stats") {
-              batchStats = event.stats;
+              batchStats = {
+                ...event.stats,
+                googleSites: batchLeaseId !== null && countedLeases.has(batchLeaseId)
+                  ? 0 : event.stats.googleSites,
+              };
               const visible = { ...tally };
               for (const key of Object.keys(tally) as (keyof SearchStats)[])
                 visible[key] += batchStats[key] || 0;
               setStats({ ...visible, approved: next.length });
             }
+            if (event.type === "progress" && progress?.leaseId === event.leaseId) {
+              progress = { leaseId: event.leaseId, offset: event.nextOffset };
+              localStorage.setItem(SEARCH_PROGRESS_KEY, JSON.stringify(progress));
+            }
             if (event.type === "done") {
-              offset = event.nextCursor;
-              siteOffset = event.nextOffset;
+              if (batchLeaseId !== null) countedLeases.add(batchLeaseId);
               interrupted = event.interrupted;
+              progress = interrupted
+                ? { leaseId: event.nextLeaseId, offset: event.nextOffset }
+                : null;
+              if (progress) localStorage.setItem(SEARCH_PROGRESS_KEY, JSON.stringify(progress));
+              else localStorage.removeItem(SEARCH_PROGRESS_KEY);
               finished = true;
             }
             if (event.type === "error") throw new Error(event.message);
@@ -269,10 +283,12 @@ export default function Home() {
         if (!finished) throw new Error("A pesquisa foi interrompida.");
         for (const key of Object.keys(tally) as (keyof SearchStats)[])
           tally[key] += batchStats[key] || 0;
-        if (interrupted && round === MAX_BATCHES - 1)
+        if (interrupted && round === MAX_BATCHES - 1) {
+          setTimeLimited(true);
           setWarning(
             "A pesquisa atingiu o limite de tempo deste clique. Clique novamente para continuar de onde parou.",
           );
+        }
       }
       setPhase("Preparando resultados...");
     } catch (e) {
@@ -293,8 +309,6 @@ export default function Home() {
           return updated;
         });
       }
-      setCursor(offset);
-      setCandidateOffset(siteOffset);
       setBusy(false);
       setPhase("");
       run.current = false;
@@ -302,9 +316,8 @@ export default function Home() {
   }
   function clearHistory() {
     localStorage.removeItem(HISTORY_KEY);
+    localStorage.removeItem(SEARCH_PROGRESS_KEY);
     setHistory([]);
-    setCursor(0);
-    setCandidateOffset(0);
   }
   function exportHistory() {
     const cell = (value: string) =>
@@ -526,18 +539,22 @@ export default function Home() {
               <p className="mt-4 text-sm text-[#afc2df]">
                 Analisamos {stats.sitesAnalyzed} sites. Encontramos WhatsApp em{" "}
                 {stats.withWhatsapp}, CNPJ em {stats.withCnpj} e nenhuma empresa
-                nova foi entregue nesta pesquisa. {predominantReason(stats)}
+                nova foi entregue nesta pesquisa. {predominantReason(stats, timeLimited)}
               </p>
             )}
             {(stats.siteErrors > 0 ||
               stats.registryErrors > 0 ||
               stats.rejectedAssociation > 0 ||
-              stats.alreadyPresented > 0) && (
+              stats.alreadyPresented > 0 ||
+              stats.skippedRecent > 0 ||
+              stats.timeLimitedCandidates > 0) && (
               <p className="mt-2 text-xs text-[#7892b5]">
                 Falhas de acesso a sites: {stats.siteErrors} · Falhas nos
                 serviços cadastrais: {stats.registryErrors} · Diretórios:{" "}
                 {stats.rejectedDirectory} · Associação site/CNPJ não confirmada:{" "}
-                {stats.rejectedAssociation} · Já apresentadas: {stats.alreadyPresented}.
+                {stats.rejectedAssociation} · Já apresentadas: {stats.alreadyPresented} ·
+                Sites vistos recentemente: {stats.skippedRecent} ·
+                Prazo do lote: {stats.timeLimitedCandidates}.
                 Falhas técnicas não são contadas como rejeições cadastrais.
               </p>
             )}
@@ -579,7 +596,7 @@ export default function Home() {
             <div className="mt-6 text-center">
               <p className="mb-4 text-sm text-[#8fa2bd]">
                 {stats.approved < 5
-                  ? `Encontramos ${stats.approved} empresa${stats.approved === 1 ? "" : "s"} nova${stats.approved === 1 ? "" : "s"} nesta pesquisa. ${stats.alreadyPresented ? `${stats.alreadyPresented} já havia${stats.alreadyPresented === 1 ? "" : "m"} sido apresentada${stats.alreadyPresented === 1 ? "" : "s"} e foi${stats.alreadyPresented === 1 ? "" : "ram"} omitida${stats.alreadyPresented === 1 ? "" : "s"}.` : "Os demais candidatos não passaram por todos os critérios."}`
+                  ? `Encontramos ${stats.approved} empresa${stats.approved === 1 ? "" : "s"} nova${stats.approved === 1 ? "" : "s"} nesta pesquisa. ${stats.alreadyPresented ? `${stats.alreadyPresented} candidato${stats.alreadyPresented === 1 ? " já constava" : "s já constavam"} no histórico de entregas.` : "Os demais candidatos não passaram por todos os critérios."}`
                   : "Todas as empresas exibidas passaram pela verificação."}
               </p>
               <button

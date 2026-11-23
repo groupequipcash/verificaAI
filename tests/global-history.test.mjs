@@ -4,7 +4,7 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { normalizeCompanyIdentity, reservationCommand, reserveIdentity, assertGlobalHistoryAvailable, GlobalHistoryUnavailable } from "../lib/global-history.ts";
+import { normalizeCompanyIdentity, reservationCommand, reserveIdentity, assertGlobalHistoryAvailable, isDeliveredDomain, GlobalHistoryUnavailable } from "../lib/global-history.ts";
 
 const oldUrl = process.env.UPSTASH_REDIS_REST_URL;
 const oldToken = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -95,6 +95,38 @@ test("a partial integration pair falls back only to the complete legacy pair", a
       assert.equal(init.headers.authorization, "Bearer test-token");
       return new Response(JSON.stringify({ result: "PONG" }));
     });
+  } finally { restore(); }
+});
+
+test("delivered-domain precheck uses only a read command", async () => {
+  setup();
+  try {
+    const seen = await isDeliveredDomain("https://www.example.com.br/contato", async (_url, init) => {
+      assert.deepEqual(JSON.parse(init.body), ["EXISTS", "verifica-ai:{companies}:domain:example.com.br"]);
+      return new Response(JSON.stringify({ result: 1 }));
+    });
+    assert.equal(seen, true);
+    await assert.rejects(isDeliveredDomain("example.com.br", async () => { throw new Error("offline"); }), GlobalHistoryUnavailable);
+  } finally { restore(); }
+});
+
+test("concurrent final reservations never deliver a shared CNPJ or domain twice", async () => {
+  setup();
+  const keys = new Set();
+  const fakeRedis = async (_url, init) => {
+    const command = JSON.parse(init.body);
+    const first = command[3], second = command[4];
+    const reserved = !keys.has(first) && !keys.has(second);
+    if (reserved) { keys.add(first); keys.add(second); }
+    return new Response(JSON.stringify({ result: reserved ? 1 : 0 }));
+  };
+  try {
+    const results = await Promise.all([
+      reserveIdentity("11222333000181", "a.com.br", fakeRedis),
+      reserveIdentity("11222333000181", "b.com.br", fakeRedis),
+      reserveIdentity("27865757000102", "a.com.br", fakeRedis),
+    ]);
+    assert.equal(results.filter(Boolean).length, 1);
   } finally { restore(); }
 });
 

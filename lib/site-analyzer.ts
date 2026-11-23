@@ -16,8 +16,8 @@ export type SiteEvidence = {
   text: string;
   identityText: string;
 };
-export async function analyzeSite(candidate: string): Promise<SiteEvidence> {
-  const home = await fetchPublicHtml(new URL(candidate).origin);
+export async function analyzeSite(candidate: string, deadline = Infinity): Promise<SiteEvidence> {
+  const home = await fetchPublicHtml(new URL(candidate).origin, 0, deadline);
   const origin = new URL(home.url).origin;
   const homeText = visibleSiteText(home.html).slice(0, 40_000);
   const directory = isDirectorySite(new URL(origin).hostname, homeText);
@@ -43,6 +43,7 @@ export async function analyzeSite(candidate: string): Promise<SiteEvidence> {
   const visited = new Set([home.url]);
   for (const href of contacts) {
     if (pages.length >= 3) break;
+    if (Date.now() > deadline - 500) break;
     try {
       const u = new URL(href, home.url);
       if (u.origin !== origin || visited.has(u.toString())) continue;
@@ -50,7 +51,7 @@ export async function analyzeSite(candidate: string): Promise<SiteEvidence> {
       const hasCnpj = pages.some((p) => extractCnpjEvidence(p.html).length);
       const hasWhatsapp = pages.some((p) => extractWhatsapp(p.html, p.url));
       if (hasCnpj && hasWhatsapp) break;
-      pages.push(await fetchPublicHtml(u.toString()));
+      pages.push(await fetchPublicHtml(u.toString(), 0, deadline));
     } catch {
       /* página interna inacessível */
     }

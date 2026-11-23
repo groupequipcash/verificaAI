@@ -34,6 +34,10 @@ export function normalizeCompanyIdentity(cnpj: string, site: string) {
   };
   if (/^(.)\1+$/.test(normalizedCnpj) || digits[12] !== check(12) || digits[13] !== check(13))
     throw new Error("CNPJ inválido para o histórico global.");
+  return { cnpj: normalizedCnpj, domain: normalizeCompanyDomain(site) };
+}
+
+export function normalizeCompanyDomain(site: string) {
   let url: URL;
   try {
     url = new URL(site.includes("://") ? site : `https://${site}`);
@@ -45,7 +49,18 @@ export function normalizeCompanyIdentity(cnpj: string, site: string) {
   const domain = url.hostname.toLowerCase().replace(/\.$/, "").replace(/^www\./, "");
   if (!domain.includes(".") || !/^[a-z0-9.-]+$/.test(domain) || domain.length > 253)
     throw new Error("Domínio inválido para o histórico global.");
-  return { cnpj: normalizedCnpj, domain };
+  return domain;
+}
+
+export function deliveredDomainKey(site: string) {
+  return `verifica-ai:{companies}:domain:${normalizeCompanyDomain(site)}`;
+}
+
+export async function isDeliveredDomain(site: string, fetcher?: typeof fetch): Promise<boolean> {
+  const result = await redisCommand(["EXISTS", deliveredDomainKey(site)], fetcher);
+  if (result === 1) return true;
+  if (result === 0) return false;
+  throw new GlobalHistoryUnavailable();
 }
 
 export function reservationCommand(cnpj: string, site: string) {
@@ -54,7 +69,7 @@ export function reservationCommand(cnpj: string, site: string) {
   return [
     "EVAL", RESERVE_SCRIPT, "2",
     `${prefix}cnpj:${identity.cnpj}`,
-    `${prefix}domain:${identity.domain}`,
+    deliveredDomainKey(identity.domain),
     `${identity.cnpj}|${identity.domain}|${new Date().toISOString()}`,
   ];
 }

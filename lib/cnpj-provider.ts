@@ -45,6 +45,7 @@ type Dependencies = {
   redis?: typeof redisCommand;
   now?: () => number;
   pause?: (ms: number) => Promise<void>;
+  deadline?: number;
 };
 type ResolvedDependencies = Required<Dependencies>;
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -158,8 +159,9 @@ export async function getRegistration(cnpj: string, dependencies: Dependencies =
     redis: dependencies.redis || redisCommand,
     now: dependencies.now || Date.now,
     pause: dependencies.pause || wait,
+    deadline: dependencies.deadline ?? Infinity,
   };
-  const deadline = deps.now() + TOTAL_BUDGET_MS;
+  const deadline = Math.min(deps.now() + TOTAL_BUDGET_MS, deps.deadline);
   let lastError: RegistrationResult = { status: "unavailable", source: "brasilapi" };
   for (let attempt = 0; attempt < 3; attempt++) {
     const remaining = deadline - deps.now();
