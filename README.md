@@ -18,11 +18,13 @@ Em produção, a integração do projeto Vercel **existente** `verifica7` fornec
 1. Serper retorna resultados orgânicos do Google para consultas variadas por segmento e localidade.
 2. O servidor abre o site público, no máximo a página inicial e duas páginas institucionais ou de contato.
 3. O próprio site deve publicar um link de WhatsApp e um CNPJ válido. O CNPJ não vem da pesquisa do Google.
-4. A BrasilAPI confirma `identificador_matriz_filial = 1`, `descricao_identificador_matriz_filial = MATRIZ` e `descricao_situacao_cadastral = ATIVA`.
+4. A BrasilAPI confirma `identificador_matriz_filial = 1`, `descricao_identificador_matriz_filial = MATRIZ` e `descricao_situacao_cadastral = ATIVA`. Falhas transitórias recebem até duas novas tentativas, com intervalos progressivos e prazo total de 14 segundos por CNPJ. Se a BrasilAPI continuar indisponível, uma única consulta pública ao CNPJ.ws valida o mesmo CNPJ encontrado no site. O fallback exige `estabelecimento.tipo = Matriz`, situação `Ativa`, CNPJ idêntico e dados cadastrais completos.
 5. O nome cadastral é confrontado com identidade, conteúdo e contexto do CNPJ publicados no site. O domínio não precisa conter a razão social.
 6. Antes de transmitir cada empresa aprovada, um script Lua no Redis verifica e grava **atomicamente** o CNPJ e o domínio normalizados. Se qualquer chave já existir, a empresa é descartada e a busca continua. As chaves não recebem TTL.
 
 Cada lote usa uma consulta Serper, até 15 domínios e concorrência de três análises. A interface faz até quatro lotes por clique, interrompendo ao alcançar cinco aprovadas. O servidor encerra um lote antes do limite de execução e permite retomar a partir do próximo candidato. Pode retornar menos de cinco. A análise tem limites de tempo, redirecionamento e tamanho de HTML e não executa scripts. Sites que renderizam WhatsApp ou CNPJ somente via JavaScript podem ser descartados. O painel mostra contadores por etapa e separa falhas técnicas de rejeições cadastrais.
+
+O CNPJ.ws público permite 3 chamadas por minuto por IP. O Redis controla atomicamente uma janela móvel de **2 chamadas em 60 segundos para toda a aplicação**, inclusive entre instâncias da Vercel, e um bloqueio compartilhado após HTTP 429. Se Redis estiver indisponível, o fallback não é chamado. Erros nas duas fontes permanecem erros técnicos; não viram rejeição por filial ou situação cadastral. A fonte que confirmou cada resultado fica registrada no campo interno `registrationSource`.
 
 O Redis é a fonte de verdade da deduplicação entre operadores e navegadores. O `localStorage` continua apenas como histórico individual, exportação CSV e filtro auxiliar para evitar trabalho desnecessário. Limpar o histórico local não libera uma empresa reservada globalmente. Não há login nem endpoint público para limpar ou importar o histórico global.
 

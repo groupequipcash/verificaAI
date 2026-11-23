@@ -59,12 +59,16 @@ export async function verifyCompany(url: string): Promise<VerificationResult> {
     }
     if (registration.status === "timeout") {
       result.registryError++;
-      result.registryIssue = "BrasilAPI: tempo de resposta esgotado.";
+      result.registryIssue = "Consultas cadastrais: tempo de resposta esgotado.";
       continue;
     }
     if (registration.status === "unavailable") {
       result.registryError++;
-      result.registryIssue = `BrasilAPI HTTP ${registration.httpStatus || "indisponível"}: consulta cadastral não concluída.`;
+      result.registryIssue = registration.reason === "rate_limit"
+        ? "BrasilAPI indisponível; limite da consulta pública CNPJ.ws atingido."
+        : registration.reason === "limiter_unavailable"
+          ? "BrasilAPI indisponível; controle de cota do CNPJ.ws temporariamente indisponível."
+        : `Consulta cadastral ${registration.source === "cnpjws" ? "CNPJ.ws" : "BrasilAPI"} HTTP ${registration.httpStatus || "indisponível"}: não concluída.`;
       continue;
     }
     if (registration.status !== "approved") continue;
@@ -87,6 +91,7 @@ export async function verifyCompany(url: string): Promise<VerificationResult> {
       whatsappEvidence: site.whatsapp.source,
       cnpjEvidence: evidence.source,
       foundAt: new Date().toISOString(),
+      registrationSource: registration.source,
     };
     break;
   }

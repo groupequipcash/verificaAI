@@ -85,11 +85,13 @@ export async function POST(request: NextRequest) {
           message:
             "Analisando sites, WhatsApp e CNPJ; consultando a BrasilAPI quando há evidências...",
         });
-        const deadline = Date.now() + 45_000;
+        const deadline = Date.now() + 55_000;
         let registryNoticeSent = false;
         let i = Number(offset);
         for (; i < candidates.length && companies.length < 5; i += 3) {
-          if (Date.now() > deadline - 22_000) break;
+          // A group can include two bounded registry checks per site.
+          // Leave enough time for it before the 60-second Function limit.
+          if (Date.now() > deadline - 43_000) break;
           const group = candidates
             .slice(i, i + 3)
             .filter(

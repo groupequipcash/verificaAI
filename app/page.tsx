@@ -33,7 +33,7 @@ function predominantReason(stats: SearchStats) {
   if (!stats.withCnpj)
     return "Os sites com WhatsApp não publicaram um CNPJ válido localizável.";
   if (stats.registryErrors >= stats.cnpjsQueried && stats.cnpjsQueried)
-    return "A BrasilAPI não respondeu às consultas cadastrais; tente novamente mais tarde.";
+    return "Os serviços cadastrais não responderam às consultas; tente novamente mais tarde.";
   if (stats.rejectedBranch > stats.rejectedInactive && stats.rejectedBranch > 0)
     return "A maioria dos CNPJs consultados corresponde a filiais.";
   if (stats.rejectedInactive > 0)
@@ -532,7 +532,7 @@ export default function Home() {
               stats.rejectedAssociation > 0) && (
               <p className="mt-2 text-xs text-[#7892b5]">
                 Falhas de acesso a sites: {stats.siteErrors} · Falhas na
-                BrasilAPI: {stats.registryErrors} · Diretórios:{" "}
+                Serviços cadastrais: {stats.registryErrors} · Diretórios:{" "}
                 {stats.rejectedDirectory} · Associação site/CNPJ não confirmada:{" "}
                 {stats.rejectedAssociation}. Falhas técnicas não são contadas
                 como rejeições cadastrais.

@@ -11,6 +11,7 @@ export type Company = {
   whatsappEvidence: string;
   cnpjEvidence: string;
   foundAt: string;
+  registrationSource?: "brasilapi" | "cnpjws";
 };
 export type SearchStats = {
   googleSites: number;
